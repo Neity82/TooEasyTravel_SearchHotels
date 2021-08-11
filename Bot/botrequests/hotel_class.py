@@ -17,7 +17,8 @@ class Hotel:
         _all_info(Dict): полная информация об отеле
         _name (str): название отеля
         _stars (int): количество звезд
-        _rating (str): рейтинг
+        _rating (str): рейтинг в числовом варианте
+        _rating_text (str): рейтинг в текстовом варианте
         _address (str): адрес
         _distance (str): расстояние до центра
         _price (str): цена за 1 ночь
@@ -28,6 +29,7 @@ class Hotel:
         self._name = self._all_info.get("name", '')
         self._stars = int(self._all_info.get("starRating"))
         self._rating = self._all_info.get("guestReviews", {}).get("rating", '')
+        self._rating_text = self._all_info.get("guestReviews", {}).get("badgeText", '')
         self._address = ', '.join([i_value for i_key, i_value in self._all_info.get("address", {}).items()
                                    if i_key in ["streetAddress", "locality", "countryName"]])
         self._distance = self._all_info.get("landmarks", [{}])[0].get("distance", '')
@@ -35,12 +37,14 @@ class Hotel:
 
     def __str__(self) -> str:
         return "*{name}*\n{stars}\n{address}\nРасстояние до центра: {distance}\n " \
-               "Рейтинг: *{rating}*\nЦена за 1 ночь: *{price}*".format(stars=emojize(":star:") * self._stars,
-                                                                       name=self._name,
-                                                                       address=self._address,
-                                                                       distance=self._distance,
-                                                                       rating=self._rating,
-                                                                       price=self._price)
+               "Рейтинг: *{rating} {rating_text}*\nЦена за 1 ночь: *{price}*".format(
+                                                                                stars=emojize(":star:") * self._stars,
+                                                                                name=self._name,
+                                                                                address=self._address,
+                                                                                distance=self._distance,
+                                                                                rating=self._rating,
+                                                                                rating_text=self._rating_text,
+                                                                                price=self._price)
 
     @property
     def all_info(self):
@@ -59,6 +63,10 @@ class Hotel:
         return self._rating
 
     @property
+    def rating_text(self):
+        return self._rating_text
+
+    @property
     def address(self):
         return self._address
 
@@ -73,4 +81,3 @@ class Hotel:
     @all_info.setter
     def all_info(self, info):
         self._all_info = info
-

@@ -4,9 +4,9 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pytelegrambotapi = "*"
-decouple = "*"
-loguru = "*"
+pytelegrambotapi = "3.8.1"
+decouple = "0.0.7"
+loguru = "0.5.3"
 
 [dev-packages]
 
