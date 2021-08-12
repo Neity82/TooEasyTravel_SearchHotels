@@ -11,6 +11,7 @@ from log import logging_decor
 from botrequests.city_class import City
 from botrequests.hotel_class import Hotel
 
+
 TOKEN: str = config("TOKEN")
 KEY: str = config("KEY")
 
@@ -27,7 +28,11 @@ users: Dict = {}
 
 
 @logging_decor
-def new_user(chat_id) -> None:
+def new_user(chat_id: int) -> None:
+    """
+    Функция проверяет наличие id чата пользователя в словаре users по ключу.
+    Если пользователя нет в словаре, то добавляет в словарь. Ключ - id чата, значение - создает инстанс класса City.
+    """
     if chat_id not in users:
         users[chat_id] = City()
         logger.info("Новый пользователь добавлен в список, ID чата: {chat_id}".format(chat_id=chat_id))
@@ -35,10 +40,11 @@ def new_user(chat_id) -> None:
 
 @bot.message_handler(commands=['hello_world'])
 @logging_decor
-def hello_world(message) -> None:
+def hello_world(message: types.Message) -> None:
     """
     Функция обрабатывает команду /hello_world.
-    Выводит ответное сообщение пользователю.
+    Сначала вызывает функцию new_user, которая проверяет наличие id чата в
+    словаре users. После выводит ответное сообщение пользователю.
     """
     new_user(message.chat.id)
 
@@ -47,10 +53,11 @@ def hello_world(message) -> None:
 
 @bot.message_handler(commands=['start'])
 @logging_decor
-def start_message(message) -> None:
+def start_message(message: types.Message) -> None:
     """
     Функция обрабатывает команду /start.
-    Выводит стартовое сообщение пользователю.
+    Сначала вызывает функцию new_user, которая проверяет наличие id чата в
+    словаре users. Выводит стартовое сообщение пользователю.
     """
     new_user(message.chat.id)
 
@@ -64,10 +71,11 @@ def start_message(message) -> None:
 
 @bot.message_handler(commands=['help'])
 @logging_decor
-def help_message(message) -> None:
+def help_message(message: types.Message) -> None:
     """
     Функция обрабатывает команду /help.
-    Выводит список команд пользователю.
+    Сначала вызывает функцию new_user, которая проверяет наличие id чата в
+    словаре users. Выводит список команд пользователю.
     """
     new_user(message.chat.id)
 
@@ -79,44 +87,51 @@ def help_message(message) -> None:
                                            "центру)".format(name=COMPANY))
 
 
-@bot.message_handler(commands=['lowprice'])
+@bot.message_handler(commands=['lowprice', 'highprice', 'bestdeal'])
 @logging_decor
 @logger.catch
-def command_lowprice(message) -> None:
+def commands(message: types.Message) -> None:
     """
-    Функция обрабатывает команду /lowprice.
-    Запрашивает у пользователя город для поиска.
+    Функция обрабатывает запросы пользователя /lowprice, /highprice и /bestdeal.
+    Сначала вызывает функцию new_user, которая проверяет наличие id чата в
+    словаре users. Передает переменной sort_order инстанса класса City значение.
     """
     new_user(message.chat.id)
+    if message.text.lower() == "/lowprice":
+        users[message.chat.id].sort_order = "PRICE"
+    elif message.text.lower() == "/highprice":
+        users[message.chat.id].sort_order = "PRICE_HIGHEST_FIRST"
+    elif message.text.lower() == "/bestdeal":
+        users[message.chat.id].sort_order = "DISTANCE_FROM_LANDMARK"
+    query_city(message)
 
-    users[message.chat.id].sort_order = "PRICE"
-    bot.send_message(message.chat.id, 'Введите название города')
+
+@logging_decor
+@logger.catch
+def query_city(message: types.Message) -> None:
+    """
+    Запрашивает у пользователя город для поиска.
+    """
+    bot.send_message(message.chat.id, "Введите название города")
     bot.register_next_step_handler(message, search_for_city)
 
 
-@bot.message_handler(commands=['highprice'])
 @logging_decor
 @logger.catch
-def command_higprice(message) -> None:
+def search_for_city(message: types.Message) -> None:
     """
-    Функция обрабатывает команду /highprice.
-    Запрашивает у пользователя город для поиска.
-    """
-    new_user(message.chat.id)
+    Поиск города
 
-    users[message.chat.id].sort_order = "PRICE_HIGHEST_FIRST"
-    bot.send_message(message.chat.id, 'Введите название города')
-    bot.register_next_step_handler(message, search_for_city)
-
-
-@logging_decor
-@logger.catch
-def search_for_city(message) -> None:
+    Принимает на вход сообщение от пользователя с названием города, присваивает это значение переменной name
+    инстанса класса City. Вызывает метод класса City для поиска всех городов с указанным названием, который возвращает
+    словарь где ключ - id города, значение - название города, страна. Если найдено таких городов больше 1,
+    то создается Inline клавиатуру с вариантами городов для выбора. Если возвращается пустой словарь, то вызывается
+    исключение и пользователю сообщается, что такого города нет в БД.
     """
-    Предлагает варианты городов для поиска
-    Обрабатывает ошибку, если города нет.
-    """
+
     users[message.chat.id].name = message.text
+    if not re.match(r"\b[а-я]\w*", message.text, flags=re.IGNORECASE):
+        users[message.chat.id].lang = "en_US"
     try:
         cities_list = users[message.chat.id].search_all_id_for_name(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
         if not cities_list:
@@ -135,15 +150,17 @@ def search_for_city(message) -> None:
         logger.error("Город отсутствует в базе данных: {val}".format(val=message.text))
         bot.send_message(message.chat.id, "В моей базе нет такого города.")
         time.sleep(2)
-        command_lowprice(message)
+        query_city(message)
 
 
 @bot.callback_query_handler(func=lambda call: True)
 @logging_decor
 @logger.catch
-def callback_worker(call) -> None:
+def callback_worker(call: types.CallbackQuery) -> None:
     """
-    Обработчик Inline клавиатуры
+    Обработчик Inline клавиатуры.
+    Принимает на вход значение callback_data и присваивает его переменной city_id инстанса класса City.
+    После нажатия пользователем клавиатура убирается.
     """
     users[call.message.chat.id].city_id = call.data
     bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
@@ -154,7 +171,7 @@ def callback_worker(call) -> None:
 
 @logging_decor
 @logger.catch
-def query_total_hotels(message) -> None:
+def query_total_hotels(message: types.Message) -> None:
     """
     Функция запрашивает у пользователя какое количество отелей необходимо отобразить.
     """
@@ -164,12 +181,14 @@ def query_total_hotels(message) -> None:
 
 @logging_decor
 @logger.catch
-def check_errors_in_total_hotels(message) -> None:
+def check_errors_in_total_hotels(message: types.Message) -> None:
     """
-    Функция обрабатывает ошибки, связанные
-    с некорректным вводом количества отелей пользователем
-    Если ошибок не найдено отправляет запрос на поиск отелей,
-    создает список из объектов класса Hotel
+    Функция обрабатывает ошибки, связанные с некорректным вводом количества отелей пользователем
+
+    Получает на вход сообщение от пользователя с количеством отелей, проверяет, что это сообщение является числом и
+    находится в допустимых границах (от 1 до 25). Если ввод не корректный, то выбрасывается исключение и пользователю
+    сообщается, что либо нужно вводить числа, либо он вышел за границы допустимых значений.
+
     """
     try:
         if not message.text.isdigit():
@@ -185,44 +204,142 @@ def check_errors_in_total_hotels(message) -> None:
         query_total_hotels(message)
     except ValueError:
         logger.error("Значение находится за пределами допустимого интервала: {val}".format(val=message.text))
-        bot.send_message(message.chat.id, "Количество отелей не может быть меньше 0 и больше 25!")
+        bot.send_message(message.chat.id, "Количество отелей не может быть меньше 1 и больше 25!")
         query_total_hotels(message)
-
     else:
-        bot.send_message(message.chat.id, "Подбираю отели. Ожидайте...")
-        hotels = users[message.chat.id].search_hotels(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
-        hotels_object_list = list()
-        for i_hotel in hotels.get("data", {}).get("body", {}).get("searchResults", {}).get("results", ''):
-            hotels_object_list.append(Hotel(all_info=i_hotel))
-        try:
-            if not hotels_object_list:
-                raise ValueError
-
-        except ValueError:
-            logger.error("Отелей не найдено")
-            bot.send_message(message.chat.id, "По вашему запросу ничего не найдено")
-
-        get_info(message, hotels_object_list)
+        if users[message.chat.id].sort_order == "DISTANCE_FROM_LANDMARK":
+            query_min_max_price(message)
+        else:
+            choice_hotels(message)
 
 
 @logging_decor
 @logger.catch
-def get_info(message, hotels_list) -> None:
+def query_min_max_price(message: types.Message) -> None:
     """
-    Функция из списка отелей формирует инфо и выдает в телеграмм пользователю
+    Запрашивает минимальную и максимальную стоимость отеля.
     """
-    for i_object in hotels_list:
+    if len(users[message.chat.id].min_max_price) == 0:
+        bot.send_message(message.chat.id, "Введите минимальную стоимость отеля")
+        bot.register_next_step_handler(message, check_errors_in_min_max_price)
+
+    elif len(users[message.chat.id].min_max_price) == 1:
+        bot.send_message(message.chat.id, "Введите максимальную стоимость отеля")
+        bot.register_next_step_handler(message, check_errors_in_min_max_price)
+
+    else:
+        query_distance(message)
+
+
+@logging_decor
+@logger.catch
+def check_errors_in_min_max_price(message):
+    """
+    Функция обрабатывает ошибки, связанные с некорректным вводом стоимости отеля пользователем
+
+    Принимает на вход сообщение о стоимости отеля от пользователя. Проверяет, что сообщение является числом.
+    Если ввод не корректный выбрасывается исключение, пользователю сообщает о некорректном вводе.
+    """
+    try:
+        if not message.text.isdigit():
+            raise TypeError
+    except TypeError:
+        logger.error("Неверные формат ввода: {val}".format(val=message.text))
+        bot.send_message(message.chat.id, "Вводите цифрами!")
+        query_min_max_price(message)
+    else:
+        users[message.chat.id].min_max_price.append(message.text)
+        query_min_max_price(message)
+
+
+@logging_decor
+@logger.catch
+def query_distance(message: types.Message) -> None:
+    """
+    Запрашивает минимальное и максимальное расстояние от отеля до центра.
+    """
+    if len(users[message.chat.id].min_max_distance) == 0:
+        bot.send_message(message.chat.id, "Введите минимальное расстояние от отеля до центра")
+        bot.register_next_step_handler(message, check_errors_in_min_max_distance)
+
+    elif len(users[message.chat.id].min_max_distance) == 1:
+        bot.send_message(message.chat.id, "Введите максимальное расстояние от отеля до центра")
+        bot.register_next_step_handler(message, check_errors_in_min_max_distance)
+
+    else:
+        choice_hotels(message)
+
+
+@logging_decor
+@logger.catch
+def check_errors_in_min_max_distance(message: types.Message) -> None:
+    """
+    Функция обрабатывает ошибки, связанные с некорректным вводом расстояния пользователем
+
+    Принимает на вход сообщение о расстоянии от пользователя. Проверяет, что сообщение является числом.
+    Если ввод не корректный выбрасывается исключение, пользователю сообщает о некорректном вводе.
+        """
+    try:
+        if not message.text.isdigit():
+            raise TypeError
+    except TypeError:
+        logger.error("Неверные формат ввода: {val}".format(val=message.text))
+        bot.send_message(message.chat.id, "Вводите цифрами!")
+        query_distance(message)
+    else:
+        users[message.chat.id].min_max_distance.append(message.text)
+        query_distance(message)
+
+
+@logging_decor
+@logger.catch
+def choice_hotels(message: types.Message) -> None:
+    """
+    Подбор отелей по параметрам пользователя
+
+    Вызывается метод класса City для подбора отелей, который возвращает список словарей с информацией по отелям.
+    Из каждого объекта списка создается инстанс класса Hotel и добавляется в hotels класса City.
+    Если возвращается пустой список, то выбрасывается исключение и пользователю сообщается, что по заданным параметрам
+    отелей не найдено.
+
+    """
+    bot.send_message(message.chat.id, "Подбираю отели. Ожидайте...")
+    hotels = users[message.chat.id].search_hotels(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
+    for i_hotel in hotels:
+        users[message.chat.id].hotels.append(Hotel(all_info=i_hotel))
+    try:
+        if not users[message.chat.id].hotels:
+            raise ValueError
+
+    except ValueError:
+        logger.error("Отелей не найдено")
+        bot.send_message(message.chat.id, "По вашему запросу ничего не найдено")
+        users.pop(message.chat.id)
+    else:
+        get_info(message)
+
+
+@logging_decor
+@logger.catch
+def get_info(message: types.Message) -> None:
+    """
+    Передает информацию об отелях пользователю
+    Из списка объектов класса Hotel формирует инфо и выдает в телеграмм пользователю.
+    После список обнуляется.
+    """
+    for i_object in users[message.chat.id].hotels:
         bot.send_message(chat_id=message.chat.id, text=i_object, parse_mode="Markdown")
+    users.pop(message.chat.id)
 
 
 @bot.message_handler(content_types=['text'])
 @logging_decor
-def say_hello(message) -> None:
+def say_hello(message: types.Message) -> None:
     """
     Функция обрабатывает сообщения от пользователя (Привет, Спасибо) и
     отвечает на них соответствующей фразой
     """
-    new_user(message)
+    new_user(message.chat.id)
 
     if re.search(r"\bпривет\w*", message.text, flags=re.IGNORECASE):
         bot.send_message(message.chat.id, "Привет, чем я могу Вам помочь?\n\nЧтобы узнать подробнее о моих "
