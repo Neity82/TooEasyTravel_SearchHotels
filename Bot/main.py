@@ -1,5 +1,4 @@
 import re
-import time
 from typing import Dict
 
 import telebot
@@ -24,7 +23,7 @@ HEADERS: Dict = {
     'x-rapidapi-host': "hotels4.p.rapidapi.com"
 }
 
-users: Dict = {}
+user_requests: Dict = {}
 
 
 @logging_decor
@@ -33,8 +32,8 @@ def new_user(chat_id: int) -> None:
     Функция проверяет наличие id чата пользователя в словаре users по ключу.
     Если пользователя нет в словаре, то добавляет в словарь. Ключ - id чата, значение - создает инстанс класса City.
     """
-    if chat_id not in users:
-        users[chat_id] = City()
+    if chat_id not in user_requests:
+        user_requests[chat_id] = City()
         logger.info("Новый пользователь добавлен в список, ID чата: {chat_id}".format(chat_id=chat_id))
 
 
@@ -98,11 +97,11 @@ def commands(message: types.Message) -> None:
     """
     new_user(message.chat.id)
     if message.text.lower() == "/lowprice":
-        users[message.chat.id].sort_order = "PRICE"
+        user_requests[message.chat.id].sort_order = "PRICE"
     elif message.text.lower() == "/highprice":
-        users[message.chat.id].sort_order = "PRICE_HIGHEST_FIRST"
+        user_requests[message.chat.id].sort_order = "PRICE_HIGHEST_FIRST"
     elif message.text.lower() == "/bestdeal":
-        users[message.chat.id].sort_order = "DISTANCE_FROM_LANDMARK"
+        user_requests[message.chat.id].sort_order = "DISTANCE_FROM_LANDMARK"
     query_city(message)
 
 
@@ -129,11 +128,11 @@ def search_for_city(message: types.Message) -> None:
     исключение и пользователю сообщается, что такого города нет в БД.
     """
 
-    users[message.chat.id].name = message.text
+    user_requests[message.chat.id].name = message.text
     if not re.match(r"\b[а-я]\w*", message.text, flags=re.IGNORECASE):
-        users[message.chat.id].lang = "en_US"
+        user_requests[message.chat.id].lang = "en_US"
     try:
-        cities_list = users[message.chat.id].search_all_id_for_name(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
+        cities_list = user_requests[message.chat.id].search_all_id_for_name(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
         if not cities_list:
             raise KeyError
         else:
@@ -144,12 +143,11 @@ def search_for_city(message: types.Message) -> None:
                 keyboard.add(*key_list)
                 bot.send_message(message.chat.id, text="Выберите город из списка:", reply_markup=keyboard)
             else:
-                users[message.chat.id].city_id = [i_id for i_id in cities_list][0]
+                user_requests[message.chat.id].city_id = [i_id for i_id in cities_list][0]
                 query_total_hotels(message)
     except KeyError:
         logger.error("Город отсутствует в базе данных: {val}".format(val=message.text))
         bot.send_message(message.chat.id, "В моей базе нет такого города.")
-        time.sleep(2)
         query_city(message)
 
 
@@ -162,7 +160,7 @@ def callback_worker(call: types.CallbackQuery) -> None:
     Принимает на вход значение callback_data и присваивает его переменной city_id инстанса класса City.
     После нажатия пользователем клавиатура убирается.
     """
-    users[call.message.chat.id].city_id = call.data
+    user_requests[call.message.chat.id].city_id = call.data
     bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
@@ -196,7 +194,7 @@ def check_errors_in_total_hotels(message: types.Message) -> None:
         elif int(message.text) not in range(1, 26):
             raise ValueError
         else:
-            users[message.chat.id].total_hotels = message.text
+            user_requests[message.chat.id].total_hotels = message.text
 
     except TypeError:
         logger.error("Неверные формат ввода: {val}".format(val=message.text))
@@ -207,7 +205,7 @@ def check_errors_in_total_hotels(message: types.Message) -> None:
         bot.send_message(message.chat.id, "Количество отелей не может быть меньше 1 и больше 25!")
         query_total_hotels(message)
     else:
-        if users[message.chat.id].sort_order == "DISTANCE_FROM_LANDMARK":
+        if user_requests[message.chat.id].sort_order == "DISTANCE_FROM_LANDMARK":
             query_min_max_price(message)
         else:
             choice_hotels(message)
@@ -219,11 +217,11 @@ def query_min_max_price(message: types.Message) -> None:
     """
     Запрашивает минимальную и максимальную стоимость отеля.
     """
-    if len(users[message.chat.id].min_max_price) == 0:
+    if len(user_requests[message.chat.id].min_max_price) == 0:
         bot.send_message(message.chat.id, "Введите минимальную стоимость отеля")
         bot.register_next_step_handler(message, check_errors_in_min_max_price)
 
-    elif len(users[message.chat.id].min_max_price) == 1:
+    elif len(user_requests[message.chat.id].min_max_price) == 1:
         bot.send_message(message.chat.id, "Введите максимальную стоимость отеля")
         bot.register_next_step_handler(message, check_errors_in_min_max_price)
 
@@ -248,7 +246,7 @@ def check_errors_in_min_max_price(message):
         bot.send_message(message.chat.id, "Вводите цифрами!")
         query_min_max_price(message)
     else:
-        users[message.chat.id].min_max_price.append(message.text)
+        user_requests[message.chat.id].min_max_price.append(message.text)
         query_min_max_price(message)
 
 
@@ -258,11 +256,11 @@ def query_distance(message: types.Message) -> None:
     """
     Запрашивает минимальное и максимальное расстояние от отеля до центра.
     """
-    if len(users[message.chat.id].min_max_distance) == 0:
+    if len(user_requests[message.chat.id].min_max_distance) == 0:
         bot.send_message(message.chat.id, "Введите минимальное расстояние от отеля до центра")
         bot.register_next_step_handler(message, check_errors_in_min_max_distance)
 
-    elif len(users[message.chat.id].min_max_distance) == 1:
+    elif len(user_requests[message.chat.id].min_max_distance) == 1:
         bot.send_message(message.chat.id, "Введите максимальное расстояние от отеля до центра")
         bot.register_next_step_handler(message, check_errors_in_min_max_distance)
 
@@ -287,7 +285,7 @@ def check_errors_in_min_max_distance(message: types.Message) -> None:
         bot.send_message(message.chat.id, "Вводите цифрами!")
         query_distance(message)
     else:
-        users[message.chat.id].min_max_distance.append(message.text)
+        user_requests[message.chat.id].min_max_distance.append(message.text)
         query_distance(message)
 
 
@@ -304,17 +302,17 @@ def choice_hotels(message: types.Message) -> None:
 
     """
     bot.send_message(message.chat.id, "Подбираю отели. Ожидайте...")
-    hotels = users[message.chat.id].search_hotels(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
+    hotels = user_requests[message.chat.id].search_hotels(URL_BASIC=URL_BASIC, HEADERS=HEADERS)
     for i_hotel in hotels:
-        users[message.chat.id].hotels.append(Hotel(all_info=i_hotel))
+        user_requests[message.chat.id].hotels.append(Hotel(all_info=i_hotel))
     try:
-        if not users[message.chat.id].hotels:
+        if not user_requests[message.chat.id].hotels:
             raise ValueError
 
     except ValueError:
         logger.error("Отелей не найдено")
         bot.send_message(message.chat.id, "По вашему запросу ничего не найдено")
-        users.pop(message.chat.id)
+        user_requests.pop(message.chat.id)
     else:
         get_info(message)
 
@@ -327,9 +325,9 @@ def get_info(message: types.Message) -> None:
     Из списка объектов класса Hotel формирует инфо и выдает в телеграмм пользователю.
     После список обнуляется.
     """
-    for i_object in users[message.chat.id].hotels:
+    for i_object in user_requests[message.chat.id].hotels:
         bot.send_message(chat_id=message.chat.id, text=i_object, parse_mode="Markdown")
-    users.pop(message.chat.id)
+    user_requests.pop(message.chat.id)
 
 
 @bot.message_handler(content_types=['text'])

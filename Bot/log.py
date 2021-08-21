@@ -18,7 +18,12 @@ def logging_decor(func: Callable) -> Callable:
     def wrapper(*args, **kwargs):
         logger.debug("Вызвана функция: {func}, аргументы: {args}, {kwargs}".format(func=func.__name__,
                                                                                    args=args, kwargs=kwargs))
-        logger.info(args[0])
+        if args:
+            for info in args:
+                logger.info(info)
+        if kwargs:
+            for info in kwargs:
+                logger.info(info)
 
         result = func(*args, **kwargs)
         return result
